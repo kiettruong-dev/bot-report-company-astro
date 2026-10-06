@@ -1,43 +1,11 @@
-import fs from "node:fs";
-import path from "node:path";
-
-// Zalo user id -> sheet tab id, persisted across restarts. A tab name string is an older format; callers upgrade it.
-// Mappings are kept per Apps Script URL, so pointing the app at a different sheet never reuses another sheet's tab ids.
-const FILE = path.resolve(process.cwd(), "data", "user-map.json");
-
-type UserMap = Record<string, number | string>;
-
-const namespace = () => process.env.APPS_SCRIPT_URL ?? "default";
-
-const loadAll = (): Record<string, unknown> => {
-    try {
-        return JSON.parse(fs.readFileSync(FILE, "utf8"));
-    } catch {
-        return {};
-    }
+// Zalo user id -> sheet tab id. Add a line here (and redeploy) when a new member joins.
+// Tab ids are used instead of names so renaming a tab in the sheet doesn't break the mapping.
+export const USER_TABS: Record<string, number> = {
+    f185798b9cc675982cd7: 1535048569, // Kiệt
+    "3fc940c0408aa9d4f09b": 0,// Nam
 };
 
-const load = (): UserMap => {
-    const entry = loadAll()[namespace()];
-    return entry && typeof entry === "object" ? (entry as UserMap) : {};
-};
-
-const save = (map: UserMap): void => {
-    fs.mkdirSync(path.dirname(FILE), { recursive: true });
-    fs.writeFileSync(FILE, JSON.stringify({ ...loadAll(), [namespace()]: map }, null, 2));
-};
-
-export const getTab = (userId: string): number | string | undefined => load()[userId];
-
-export const setTab = (userId: string, tab: number): void => {
-    save({ ...load(), [userId]: tab });
-};
-
-export const clearTab = (userId: string): void => {
-    const map = load();
-    delete map[userId];
-    save(map);
-};
+export const getTab = (userId: string): number | undefined => USER_TABS[userId];
 
 /** Compare names ignoring case, accents and extra spaces ("Kiệt" == "kiet"). */
 export const normalizeName = (s: string): string =>

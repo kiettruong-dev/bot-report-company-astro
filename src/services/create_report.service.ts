@@ -1,5 +1,5 @@
 import { appendTasks, listTabs, SheetTabNotFoundError, Tab, TaskEntry } from "./sheet.service";
-import { clearTab, getTab, normalizeName, setTab } from "./user_map.service";
+import { getTab, normalizeName } from "./user_map.service";
 import { sendZaloMessage } from "./zalo.service";
 
 export interface IncomingMessage {
@@ -20,9 +20,8 @@ const PROMPT = [
     "- Extension emails 25p",
 ].join("\n");
 
-// Where each user is in the conversation (in-memory, lost on restart): picking a tab, or sending tasks.
-type ConversationState = { step: "tab"; tabs: Tab[] } | { step: "tasks" };
-const state = new Map<string, ConversationState>();
+// Users who ran /report and are expected to send their tasks next (in-memory, lost on restart).
+const state = new Map<string, { step: "tasks" }>();
 
 const todayIso = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }); // yyyy-mm-dd
 
@@ -84,42 +83,25 @@ const summarize = (tasks: TaskEntry[]): string => {
         .join("\n");
 };
 
-/** Ask the user which sheet tab is theirs (reply by name or number). */
-const askForTab = async (chatId: string, userId: string, tabs: Tab[], intro: string): Promise<void> => {
-    state.set(userId, { step: "tab", tabs });
-    await sendZaloMessage(chatId, `${intro} Trả lời tên hoặc số thứ tự:\n${tabs.map((t, i) => `${i + 1}. ${t.name}`).join("\n")}`);
-};
-
 /**
- * Find the user's current tab. Mappings are stored by tab id, so renaming a tab in the sheet doesn't break them.
- * Falls back to matching the Zalo display name (also upgrades old name-based mappings). Undefined if unknown.
+ * Find the user's tab from USER_TABS, falling back to matching the Zalo display name against tab names.
+ * Undefined if unknown or the tab no longer exists in the sheet.
  */
-const resolveTab = async (userId: string, userName: string, tabs: Tab[]): Promise<Tab | undefined> => {
+const resolveTab = (userId: string, userName: string, tabs: Tab[]): Tab | undefined => {
     const saved = getTab(userId);
-    const byId = typeof saved === "number" ? tabs.find((t) => t.id === saved) : undefined;
-    if (byId) return byId;
-
-    const wanted = typeof saved === "string" ? saved : userName;
-    const match = tabs.find((t) => normalizeName(t.name) === normalizeName(wanted)) ?? tabs.find((t) => normalizeName(t.name) === normalizeName(userName));
-    if (match) setTab(userId, match.id);
-    else if (saved !== undefined) clearTab(userId);
-    return match;
+    const byId = saved !== undefined ? tabs.find((t) => t.id === saved) : undefined;
+    return byId ?? tabs.find((t) => normalizeName(t.name) === normalizeName(userName));
 };
 
-const UNKNOWN_TAB = "Mình chưa biết bạn là tab nào trong sheet.";
+const unknownTab = (userId: string) =>
+    `Mình chưa biết bạn là tab nào trong sheet. Hãy gửi mã này cho admin để được thêm vào: ${userId}`;
 
 export const handleReportMessage = async ({ chatId, userId, userName, text }: IncomingMessage): Promise<void> => {
     const content = text.trim();
 
-    if (/^\/setname(@\S+)?$/i.test(content)) {
-        await askForTab(chatId, userId, await listTabs(), "Bạn là tab nào trong sheet?");
-        return;
-    }
-
     if (/^\/report(@\S+)?$/i.test(content)) {
-        const tabs = await listTabs();
-        if (!(await resolveTab(userId, userName, tabs))) {
-            await askForTab(chatId, userId, tabs, UNKNOWN_TAB);
+        if (!resolveTab(userId, userName, await listTabs())) {
+            await sendZaloMessage(chatId, unknownTab(userId));
             return;
         }
         state.set(userId, { step: "tasks" });
@@ -127,21 +109,7 @@ export const handleReportMessage = async ({ chatId, userId, userName, text }: In
         return;
     }
 
-    const current = state.get(userId);
-    if (!current) return;
-
-    if (current.step === "tab") {
-        const index = /^\d+$/.test(content) ? Number(content) - 1 : -1;
-        const tab = current.tabs[index] ?? current.tabs.find((t) => normalizeName(t.name) === normalizeName(content));
-        if (!tab) {
-            await sendZaloMessage(chatId, "Mình không thấy tab đó, bạn trả lời lại đúng tên hoặc số thứ tự trong danh sách nhé.");
-            return;
-        }
-        setTab(userId, tab.id);
-        state.set(userId, { step: "tasks" });
-        await sendZaloMessage(chatId, `Đã nhớ bạn là tab "${tab.name}" (gõ /setname nếu muốn đổi).\n\n${PROMPT}`);
-        return;
-    }
+    if (!state.has(userId)) return;
 
     const tasks = parseTasks(content);
     if (tasks.length === 0) {
@@ -150,9 +118,10 @@ export const handleReportMessage = async ({ chatId, userId, userName, text }: In
     }
 
     const tabs = await listTabs();
-    const tab = await resolveTab(userId, userName, tabs);
+    const tab = resolveTab(userId, userName, tabs);
     if (!tab) {
-        await askForTab(chatId, userId, tabs, "Tab của bạn không còn trong sheet (có thể đã bị xóa). Gõ lại task sau khi chọn tab nhé.");
+        state.delete(userId);
+        await sendZaloMessage(chatId, `Tab của bạn không còn trong sheet (có thể đã bị xóa). ${unknownTab(userId)}`);
         return;
     }
 
@@ -160,9 +129,8 @@ export const handleReportMessage = async ({ chatId, userId, userName, text }: In
         await appendTasks(tab.id, todayIso(), tasks);
     } catch (err) {
         if (err instanceof SheetTabNotFoundError) {
-            clearTab(userId);
             state.delete(userId);
-            await sendZaloMessage(chatId, "Tab của bạn vừa biến mất khỏi sheet. Gõ /report để chọn lại tab nhé.");
+            await sendZaloMessage(chatId, "Tab của bạn vừa biến mất khỏi sheet. Báo admin kiểm tra giúp nhé.");
             return;
         }
         throw err;
