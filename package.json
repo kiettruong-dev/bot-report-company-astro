@@ -11,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@vercel/functions": "^3.9.11",
     "axios": "^1.20.0",
     "express": "^5.2.1"
   },
