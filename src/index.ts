@@ -17,6 +17,9 @@ app.get("/health", async (_req, res) => {
 
 app.use("/", indexRouter);
 
-app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
-});
+if (process.env.VERCEL === "0") {
+  app.listen(PORT, () => {
+    console.log(`Server listening on http://localhost:${PORT}`);
+  });
+}
+ export default app;
