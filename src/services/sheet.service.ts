@@ -21,7 +21,8 @@ const callScript = async (payload: Record<string, unknown>) => {
     );
     if (data?.ok) return data;
     if (data?.error === "tab_not_found") throw new SheetTabNotFoundError(String(payload.tabId));
-    throw new Error(`Apps Script error: ${data?.error ?? "unknown response"}`);
+    const raw = typeof data === "string" ? data : JSON.stringify(data);
+    throw new Error(`Apps Script error: ${data?.error ?? `unknown response: ${String(raw).slice(0, 300)}`}`);
 };
 
 export interface Tab {

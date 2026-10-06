@@ -52,7 +52,7 @@ function doPost(e) {
       var needHeader = currentWeek !== weekLabel;
       if (needHeader) rows.push([weekLabel, "", "", "", "", ""]);
       tasks.forEach(function (t) {
-        rows.push(["", t.task, t.project || "", date, t.hours || "", ""]);
+        rows.push(["", t.task, t.project || "", String(body.date), t.hours || "", ""]);
       });
 
       var start = lastUsed + 1;
