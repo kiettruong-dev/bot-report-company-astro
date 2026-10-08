@@ -20,11 +20,21 @@ const callScript = async (payload: Record<string, unknown>, retries = 0): Promis
     if (!url) throw new Error("Missing APPS_SCRIPT_URL");
 
     // Apps Script answers 200 with {ok:false,...} on failure, so check the body too.
-    const { data } = await axios.post(
-        url,
-        { secret: process.env.APPS_SCRIPT_SECRET, ...payload },
-        { headers: { "Content-Type": "text/plain" }, timeout: 60000 },
-    );
+    let data: any;
+    try {
+        ({ data } = await axios.post(
+            url,
+            { secret: process.env.APPS_SCRIPT_SECRET, ...payload },
+            { headers: { "Content-Type": "text/plain" }, timeout: 60000 },
+        ));
+    } catch (err) {
+        // Cold starts sometimes make Google answer 404/5xx on the redirect; retry when allowed.
+        if (retries > 0 && axios.isAxiosError(err) && (!err.response || err.response.status >= 404 || err.response.status === 429)) {
+            await sleep(1000);
+            return callScript(payload, retries - 1);
+        }
+        throw err;
+    }
     if (data?.ok) return data;
     if (retries > 0 && typeof data === "string") {
         await sleep(1000);
