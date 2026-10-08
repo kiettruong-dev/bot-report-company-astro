@@ -20,6 +20,8 @@ function doPost(e) {
       return respond({ ok: true, tabs: tabs });
     }
 
+    if (body.action === "search_accounts") return respond(searchAccounts(body.query));
+
     var tasks = body.tasks;
     if (!tasks || !tasks.length) return respond({ ok: false, error: "no tasks" });
 
@@ -67,6 +69,36 @@ function doPost(e) {
   } catch (err) {
     return respond({ ok: false, error: String(err) });
   }
+}
+
+// "Accounts" tab: A project/domain | B username | C password | D url. Matches when column A contains the query
+// (case/accent-insensitive, like SQL LIKE '%query%'). The url is the real hyperlink target when the cell has one.
+function searchAccounts(query) {
+  var q = normalize(query);
+  if (!q) return { ok: false, error: "empty query" };
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Accounts");
+  if (!sheet) return { ok: false, error: "accounts_tab_not_found" };
+  var last = sheet.getLastRow();
+  if (last < 2) return { ok: true, rows: [] };
+
+  var range = sheet.getRange(2, 1, last - 1, 4);
+  var vals = range.getDisplayValues();
+  var rich = range.getRichTextValues();
+  var rows = [];
+  for (var i = 0; i < vals.length; i++) {
+    if (normalize(vals[i][0]).indexOf(q) === -1) continue;
+    rows.push({
+      project: vals[i][0],
+      username: vals[i][1],
+      password: vals[i][2],
+      url: rich[i][3].getLinkUrl() || vals[i][3],
+    });
+  }
+  return { ok: true, rows: rows };
+}
+
+function normalize(s) {
+  return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").trim().toLowerCase();
 }
 
 // Monday - Saturday label; a Sunday counts toward the week that just ended.

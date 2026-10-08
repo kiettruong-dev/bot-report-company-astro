@@ -1,3 +1,4 @@
+import { ACCOUNT_COMMAND_RE, handleAccountSearch } from "./account.service";
 import { appendTasks, listTabs, SheetTabNotFoundError, Tab, TaskEntry } from "./sheet.service";
 import { getTab, normalizeName } from "./user_map.service";
 import { sendZaloMessage } from "./zalo.service";
@@ -98,6 +99,12 @@ const unknownTab = (userId: string) =>
 
 export const handleReportMessage = async ({ chatId, userId, userName, text }: IncomingMessage): Promise<void> => {
     const content = text.trim();
+
+    if (ACCOUNT_COMMAND_RE.test(content)) {
+        state.delete(userId);
+        await handleAccountSearch(chatId, userId, content);
+        return;
+    }
 
     if (/^\/report(@\S+)?$/i.test(content)) {
         if (!resolveTab(userId, userName, await listTabs())) {

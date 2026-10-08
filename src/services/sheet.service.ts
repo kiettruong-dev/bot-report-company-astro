@@ -50,6 +50,20 @@ export const listTabs = async (): Promise<Tab[]> => {
     return tabs;
 };
 
+export interface AccountEntry {
+    project: string;
+    username: string;
+    password: string;
+    url: string;
+}
+
+/** Rows of the "Accounts" tab whose project/domain column contains `query` (like SQL LIKE '%query%'). */
+export const searchAccounts = async (query: string): Promise<AccountEntry[]> => {
+    const { rows } = await callScript({ action: "search_accounts", query }, 2);
+    if (!Array.isArray(rows)) throw new Error("Apps Script returned no rows: redeploy Code.gs as a new version");
+    return rows;
+};
+
 /** Append tasks to the existing tab with id `tabId`. `date` is yyyy-mm-dd. */
 export const appendTasks = async (tabId: number, date: string, tasks: TaskEntry[]): Promise<void> => {
     await callScript({ tabId, date, tasks });
